@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useParticipant } from '@videosdk.live/react-sdk';
 import { MicOff } from 'lucide-react';
 
@@ -7,74 +7,81 @@ interface Props {
 }
 
 const ParticipantView = ({ participantId }: Props) => {
+  const webcamRef = useRef<HTMLVideoElement>(null);
   const micRef = useRef<HTMLAudioElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null); // 1. Create Ref for Video
-  
-  const { webcamStream, micStream, webcamOn, micOn, isLocal, displayName } =
-    useParticipant(participantId);
 
-  // --- Audio Logic ---
+  // 1. Get participant properties from the hook
+  const { 
+    displayName, 
+    webcamStream, 
+    micStream, 
+    webcamOn, 
+    micOn, 
+    isLocal 
+  } = useParticipant(participantId);
+
+  // 2. Play Audio (Mic)
   useEffect(() => {
     if (micRef.current) {
       if (micOn && micStream) {
         const mediaStream = new MediaStream();
         mediaStream.addTrack(micStream.track);
         micRef.current.srcObject = mediaStream;
-        micRef.current.play().catch((err) => console.error("Audio play error", err));
+        micRef.current.play().catch((err) => console.error("Mic play error", err));
       } else {
         micRef.current.srcObject = null;
       }
     }
   }, [micStream, micOn]);
 
-  // --- Video Logic ---
-  const videoStream = useMemo(() => {
-    if (webcamOn && webcamStream) {
-      const mediaStream = new MediaStream();
-      mediaStream.addTrack(webcamStream.track);
-      return mediaStream;
-    }
-    return null;
-  }, [webcamStream, webcamOn]);
-
-  // 2. Attach Stream to Video Element
+  // 3. Play Video (Webcam)
   useEffect(() => {
-    if (videoRef.current) {
-      if (webcamOn && videoStream) {
-        videoRef.current.srcObject = videoStream;
-        videoRef.current.play().catch((err) => console.error("Video play error", err));
+    if (webcamRef.current) {
+      if (webcamOn && webcamStream) {
+        const mediaStream = new MediaStream();
+        mediaStream.addTrack(webcamStream.track);
+        webcamRef.current.srcObject = mediaStream;
+        webcamRef.current.play().catch((err) => console.error("Video play error", err));
       } else {
-        videoRef.current.srcObject = null;
+        webcamRef.current.srcObject = null;
       }
     }
-  }, [videoStream, webcamOn]);
+  }, [webcamStream, webcamOn]);
 
   return (
-    <div className="relative bg-gray-800 rounded-lg overflow-hidden aspect-video flex items-center justify-center group">
-      
-      {/* Audio Element */}
-      <audio ref={micRef} autoPlay playsInline muted={isLocal} />
+    <div className="relative w-full h-64 bg-gray-800 rounded-lg overflow-hidden border border-gray-700 shadow-md">
+      {/* --- AUDIO TAG (Required to hear others) --- */}
+      <audio ref={micRef} autoPlay muted={isLocal} />
 
-      {/* 3. Native Video Element (Replaces ReactPlayer) */}
-      {webcamOn && videoStream ? (
-        <video 
-          ref={videoRef}
-          autoPlay 
-          playsInline 
-          muted={true} // Always mute the video track element to avoid echo/autoplay issues (audio is handled above)
+      {/* --- VIDEO AREA --- */}
+      {webcamOn ? (
+        <video
+          ref={webcamRef}
+          autoPlay
+          playsInline
+          muted={isLocal} // Mute local video to prevent echo/feedback loop
           className="w-full h-full object-cover"
         />
       ) : (
-        // Fallback Avatar
-        <div className="h-20 w-20 rounded-full bg-gray-600 flex items-center justify-center text-white text-2xl font-bold">
-          {displayName?.charAt(0)?.toUpperCase() || "?"}
+        /* Fallback avatar when camera is off */
+        <div className="w-full h-full flex items-center justify-center bg-gray-900">
+          <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-bold">
+            {displayName?.charAt(0)?.toUpperCase() || "?"}
+          </div>
         </div>
       )}
 
-      {/* Name Label */}
-      <div className="absolute bottom-3 left-3 bg-black/50 px-3 py-1 rounded text-white text-sm backdrop-blur-sm flex items-center gap-2">
-        <span>{displayName} {isLocal && "(You)"}</span>
+      {/* --- OVERLAYS --- */}
+      <div className="absolute bottom-2 left-2 bg-black/60 px-2 py-1 rounded text-white text-sm flex items-center gap-2">
+        <span>{displayName || "Participant"} {isLocal ? "(You)" : ""}</span>
         {!micOn && <MicOff size={14} className="text-red-400" />}
+      </div>
+      
+      {/* Indicator for Instructor/Host (Optional styling) */}
+      <div className="absolute top-2 right-2">
+        <span className="text-xs bg-gray-700/80 text-gray-300 px-1.5 py-0.5 rounded">
+            {isLocal ? "Local" : "Remote"}
+        </span>
       </div>
     </div>
   );

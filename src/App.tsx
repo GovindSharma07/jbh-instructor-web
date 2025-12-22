@@ -23,7 +23,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-          {/* Protected Dashboard Routes */}
+          {/* Protected Dashboard Routes (With Sidebar) */}
           <Route
             path="/dashboard"
             element={
@@ -32,11 +32,22 @@ function App() {
               </ProtectedRoute>
             }
           >
-            {/* Nested Routes inside Dashboard */}
             <Route index element={<DashboardHome />} />
             <Route path="schedule" element={<SchedulePage />} />
-            <Route path="live" element={<LiveClassPage />} />
+            {/* REMOVED "live" FROM HERE */}
           </Route>
+
+          {/* [FIX] MOVED "live" OUTSIDE DASHBOARD 
+             This makes it accessible at "/live" and gives it Full Screen 
+          */}
+          <Route 
+            path="/live" 
+            element={
+              <ProtectedRoute>
+                <LiveClassPage />
+              </ProtectedRoute>
+            } 
+          />
 
         </Routes>
       </AuthProvider>
