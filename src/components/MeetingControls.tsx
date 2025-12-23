@@ -1,4 +1,3 @@
-import React from 'react';
 import { useMeeting } from '@videosdk.live/react-sdk';
 import { Mic, MicOff, Video, VideoOff, PhoneOff, MonitorUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';

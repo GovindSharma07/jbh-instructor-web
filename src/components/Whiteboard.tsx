@@ -5,14 +5,14 @@ export interface WhiteboardRef {
     getStream: () => MediaStream | null;
 }
 
-const Whiteboard = forwardRef<WhiteboardRef, {}>((props, ref) => {
+const Whiteboard = forwardRef<WhiteboardRef, {}>((_, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     
     // --- STATE ---
     const [isDrawing, setIsDrawing] = useState(false);
     const [color, setColor] = useState('#ffffff');
-    const [brushSize, setBrushSize] = useState(4);
+    const [brushSize] = useState(4);
     const [tool, setTool] = useState<'pen' | 'eraser'>('pen');
     const [zoom, setZoom] = useState(1); // 1.0 to 3.0
     

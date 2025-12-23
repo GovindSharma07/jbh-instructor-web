@@ -1,4 +1,3 @@
-import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { 
@@ -6,9 +5,7 @@ import {
   Calendar, 
   BookOpen, 
   Video, 
-  LogOut, 
-  User 
-} from 'lucide-react';
+  LogOut} from 'lucide-react';
 
 const Sidebar = () => {
   const { logout, user } = useAuth();

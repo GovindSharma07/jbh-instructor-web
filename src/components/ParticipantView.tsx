@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useParticipant } from '@videosdk.live/react-sdk';
 
 interface Props {

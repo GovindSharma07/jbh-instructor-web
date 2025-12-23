@@ -8,7 +8,7 @@ import Whiteboard, { type WhiteboardRef } from '../components/Whiteboard';
 import ChatPanel from '../components/ChatPanel';
 import toast from 'react-hot-toast';
 import { Users, Presentation, MonitorOff, MessageSquare } from 'lucide-react';
-import axiosClient from '../api/axiosClient'; // <--- [IMPORTANT] Import your API Client
+import { lmsService } from '../api/lmsService'; 
 
 // --- DEBUG COMPONENT ---
 const MeetingStatusListener = () => {
@@ -89,51 +89,70 @@ const ClassroomSidebar = () => {
 const LiveClassLogic = ({ liveLectureId }: { liveLectureId: number }) => {
     const { 
         enableWebcam, disableWebcam, 
+        unmuteMic, 
         enableScreenShare, disableScreenShare, 
         presenterId, localParticipant,
-        recordingState, // Check recording status
-        meetingId       // Get Room ID to send to backend
+        recordingState, 
+        meetingId       
     } = useMeeting();
 
     const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
     const whiteboardRef = useRef<WhiteboardRef>(null);
+    const [isMediaInitialized, setIsMediaInitialized] = useState(false);
 
     // ============================================================
-    // 1. AUTO-PIN INSTRUCTOR (LOCAL VIEW)
+    // 1. SAFE MEDIA INITIALIZATION & AUTO-PIN
     // ============================================================
     useEffect(() => {
-        if (localParticipant) {
-            localParticipant.pin("CAM");
+        if (localParticipant && !isMediaInitialized) {
+            // Add a small delay to ensure SDK is ready and avoid race conditions
+            const timer = setTimeout(() => {
+                enableWebcam(); // Turn on Camera
+                unmuteMic();    // Turn on Mic
+                
+                // Pin LOCALLY (for the instructor's own view)
+                localParticipant.pin("CAM");
+                
+                setIsMediaInitialized(true);
+            }, 1000); 
+
+            return () => clearTimeout(timer);
         }
-    }, [localParticipant]);
+    }, [localParticipant, isMediaInitialized, enableWebcam, unmuteMic]);
 
     // ============================================================
     // 2. AUTO-START RECORDING (BACKEND CALL)
     // ============================================================
-    // [FIX] This replaces the direct startRecording() call
     useEffect(() => {
-        if (localParticipant && recordingState === "STOPPED" && meetingId) {
+        // Trigger only when:
+        // 1. I am joined (localParticipant.id exists)
+        // 2. Media is ready
+        // 3. Recording is not already running
+        if (localParticipant?.id && isMediaInitialized && recordingState === "STOPPED" && meetingId) {
             
             const startSecureRecording = async () => {
                 try {
-                    console.log("🚀 Requesting Backend to start recording...");
+                    console.log(`🚀 Requesting Backend to start recording for Instructor: ${localParticipant.id}`);
                     
-                    // Call YOUR Backend API
-                    // This securely uses the Backblaze credentials stored on the server
-                    await axiosClient.post('/lms/recording/start', {
-                        roomId: meetingId
-                    });
+                    // [UPDATED] Pass 'meetingId' AND 'localParticipant.id'
+                    // This allows the Backend to "Pin" this specific participant ID
+                    // ensuring ONLY the instructor is recorded.
+                    await lmsService.startRecording(meetingId, localParticipant.id);
                     
-                    toast.success("Recording Started (Saved to Backblaze)");
+                    toast.success("Recording Started (Instructor Pinned)");
                 } catch (error) {
                     console.error("Failed to start recording:", error);
-                    // Silent fail if it's just a duplicate start
                 }
             };
 
-            startSecureRecording();
+            // Small delay to ensure stream is stable before recording starts
+            const recordTimer = setTimeout(() => {
+                startSecureRecording();
+            }, 2000);
+            
+            return () => clearTimeout(recordTimer);
         }
-    }, [localParticipant, recordingState, meetingId]);
+    }, [localParticipant?.id, isMediaInitialized, recordingState, meetingId]);
 
 
     const isScreenShareActive = presenterId === localParticipant?.id;
@@ -254,10 +273,11 @@ const LiveClassPage = () => {
         <MeetingProvider
             config={{
                 meetingId: sessionData.roomId,
-                micEnabled: true,
-                webcamEnabled: true,
+                // Disable auto-start to prevent "Timeout" error on mount
+                micEnabled: false, 
+                webcamEnabled: false, 
                 name: user.fullName,
-                mode: "SEND_AND_RECV",
+                mode: "SEND_AND_RECV", // Instructor Mode
                 debugMode: true,
             }}
             token={sessionData.token}

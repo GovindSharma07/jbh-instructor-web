@@ -16,7 +16,6 @@ export interface ScheduleItem {
 export const lmsService = {
   getSchedule: async () => {
     const response = await axiosClient.get('/lms/instructor/schedule');
-    // FIX: Return .schedule instead of the whole object
     return response.data.schedule; 
   },
 
@@ -29,9 +28,16 @@ export const lmsService = {
   },
 
   endClass: async (liveLectureId: number) => {
-    // Matches backend route: POST /api/lms/instructor/end-class
     const response = await axiosClient.post('/lms/instructor/end-class', {
       liveLectureId
+    });
+    return response.data;
+  },
+
+ startRecording: async (roomId: string, participantId: string) => {
+    const response = await axiosClient.post('/lms/recording/start', {
+      roomId,
+      participantId // <--- Sending this is crucial for Pinning
     });
     return response.data;
   }
