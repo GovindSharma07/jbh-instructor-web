@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useLocation } from 'react-router-dom'; // [FIX] Removed 'Navigate'
+import { useLocation } from 'react-router-dom';
 import { MeetingProvider, MeetingConsumer, useMeeting, useParticipant } from '@videosdk.live/react-sdk';
 import { useAuth } from '../context/AuthContext';
 import ParticipantView from '../components/ParticipantView';
@@ -8,6 +8,7 @@ import Whiteboard, { type WhiteboardRef } from '../components/Whiteboard';
 import ChatPanel from '../components/ChatPanel';
 import toast from 'react-hot-toast';
 import { Users, Presentation, MonitorOff, MessageSquare } from 'lucide-react';
+import axiosClient from '../api/axiosClient'; // <--- [IMPORTANT] Import your API Client
 
 // --- DEBUG COMPONENT ---
 const MeetingStatusListener = () => {
@@ -39,7 +40,7 @@ const ClassroomCameraView = () => {
     return <ParticipantView participantId={localParticipant.id} />;
 };
 
-// --- SIDEBAR WITH TABS (STUDENTS / CHAT) ---
+// --- SIDEBAR WITH TABS ---
 const ClassroomSidebar = () => {
     const { participants, localParticipant } = useMeeting();
     const studentIds = [...participants.keys()].filter(id => id !== localParticipant?.id);
@@ -51,27 +52,20 @@ const ClassroomSidebar = () => {
                 <button 
                     onClick={() => setActiveTab('students')}
                     className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                        activeTab === 'students' 
-                        ? 'text-white border-b-2 border-blue-500 bg-gray-800/50' 
-                        : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                        activeTab === 'students' ? 'text-white border-b-2 border-blue-500 bg-gray-800/50' : 'text-gray-400 hover:text-white hover:bg-gray-800'
                     }`}
                 >
-                    <Users size={16} />
-                    Students <span className="text-xs bg-gray-700 px-1.5 rounded-full">{studentIds.length}</span>
+                    <Users size={16} /> Students <span className="text-xs bg-gray-700 px-1.5 rounded-full">{studentIds.length}</span>
                 </button>
                 <button 
                     onClick={() => setActiveTab('chat')}
                     className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                        activeTab === 'chat' 
-                        ? 'text-white border-b-2 border-blue-500 bg-gray-800/50' 
-                        : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                        activeTab === 'chat' ? 'text-white border-b-2 border-blue-500 bg-gray-800/50' : 'text-gray-400 hover:text-white hover:bg-gray-800'
                     }`}
                 >
-                    <MessageSquare size={16} />
-                    Chat
+                    <MessageSquare size={16} /> Chat
                 </button>
             </div>
-
             <div className="flex-1 overflow-hidden relative bg-gray-900">
                 {activeTab === 'students' ? (
                     <div className="absolute inset-0 overflow-y-auto custom-scrollbar">
@@ -80,14 +74,11 @@ const ClassroomSidebar = () => {
                         ) : (
                             <div className="flex flex-col items-center justify-center h-40 text-gray-500 text-sm p-4 text-center">
                                 <p>No students yet.</p>
-                                <p className="text-xs mt-1">They will appear here when they join.</p>
                             </div>
                         )}
                     </div>
                 ) : (
-                    <div className="absolute inset-0">
-                         <ChatPanel />
-                    </div>
+                    <div className="absolute inset-0"><ChatPanel /></div>
                 )}
             </div>
         </div>
@@ -97,26 +88,53 @@ const ClassroomSidebar = () => {
 // --- MAIN LOGIC WRAPPER ---
 const LiveClassLogic = ({ liveLectureId }: { liveLectureId: number }) => {
     const { 
-        enableWebcam, 
-        disableWebcam, 
-        enableScreenShare, 
-        disableScreenShare, 
-        presenterId, 
-        localParticipant 
+        enableWebcam, disableWebcam, 
+        enableScreenShare, disableScreenShare, 
+        presenterId, localParticipant,
+        recordingState, // Check recording status
+        meetingId       // Get Room ID to send to backend
     } = useMeeting();
 
     const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
     const whiteboardRef = useRef<WhiteboardRef>(null);
 
     // ============================================================
-    // [FIX 1] AUTO-PIN INSTRUCTOR (Passed "CAM" type)
+    // 1. AUTO-PIN INSTRUCTOR (LOCAL VIEW)
     // ============================================================
     useEffect(() => {
         if (localParticipant) {
-            localParticipant.pin("CAM"); // <--- Specifying "CAM" fixes the error
-            console.log("📍 Instructor automatically pinned for recording.");
+            localParticipant.pin("CAM");
         }
     }, [localParticipant]);
+
+    // ============================================================
+    // 2. AUTO-START RECORDING (BACKEND CALL)
+    // ============================================================
+    // [FIX] This replaces the direct startRecording() call
+    useEffect(() => {
+        if (localParticipant && recordingState === "STOPPED" && meetingId) {
+            
+            const startSecureRecording = async () => {
+                try {
+                    console.log("🚀 Requesting Backend to start recording...");
+                    
+                    // Call YOUR Backend API
+                    // This securely uses the Backblaze credentials stored on the server
+                    await axiosClient.post('/lms/recording/start', {
+                        roomId: meetingId
+                    });
+                    
+                    toast.success("Recording Started (Saved to Backblaze)");
+                } catch (error) {
+                    console.error("Failed to start recording:", error);
+                    // Silent fail if it's just a duplicate start
+                }
+            };
+
+            startSecureRecording();
+        }
+    }, [localParticipant, recordingState, meetingId]);
+
 
     const isScreenShareActive = presenterId === localParticipant?.id;
 
@@ -128,17 +146,14 @@ const LiveClassLogic = ({ liveLectureId }: { liveLectureId: number }) => {
         }
 
         if (isWhiteboardActive) {
-            // STOP Whiteboard -> START Camera
             setIsWhiteboardActive(false);
             disableWebcam(); 
             setTimeout(() => { 
                 enableWebcam(); 
-                // [FIX 2] Pin Camera
                 localParticipant?.pin("CAM"); 
                 toast("Switched to Camera"); 
             }, 500);
         } else {
-            // START Whiteboard -> STOP Camera
             setIsWhiteboardActive(true);
             setTimeout(async () => {
                 const stream = whiteboardRef.current?.getStream();
@@ -146,7 +161,6 @@ const LiveClassLogic = ({ liveLectureId }: { liveLectureId: number }) => {
                     disableWebcam();
                     setTimeout(() => {
                         enableWebcam(stream);
-                        // [FIX 3] Whiteboard is streamed as a Camera track, so we pin "CAM"
                         localParticipant?.pin("CAM");
                         toast.success("Whiteboard Active");
                     }, 500);
@@ -166,21 +180,16 @@ const LiveClassLogic = ({ liveLectureId }: { liveLectureId: number }) => {
         }
 
         if (isScreenShareActive) {
-            // STOP Screen Share -> START Camera
             disableScreenShare();
             setTimeout(() => {
                 enableWebcam(); 
-                // [FIX 4] Pin Camera
                 localParticipant?.pin("CAM"); 
                 toast("Switched to Camera");
             }, 1000); 
         } else {
-            // START Screen Share -> STOP Camera
             disableWebcam();
-            
             setTimeout(() => {
                 enableScreenShare();
-                // [FIX 5] Pin Screen Share
                 localParticipant?.pin("SHARE"); 
             }, 500);
         }
@@ -189,24 +198,18 @@ const LiveClassLogic = ({ liveLectureId }: { liveLectureId: number }) => {
     return (
         <div className="flex flex-col h-screen bg-black">
             <MeetingStatusListener />
-            
             <div className="flex flex-1 overflow-hidden bg-black">
                 <div className="flex-1 flex flex-col p-4 relative">
                     <div className="absolute top-4 left-4 z-10 bg-red-600 px-3 py-1 rounded text-white text-xs font-bold flex items-center gap-2 shadow-lg">
                         <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
                         LIVE
                     </div>
-
                     {!isScreenShareActive && (
-                        <button 
-                            onClick={handleWhiteboardToggle}
-                            className="absolute top-4 right-4 z-20 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg transition-colors border border-gray-600"
-                        >
+                        <button onClick={handleWhiteboardToggle} className="absolute top-4 right-4 z-20 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg transition-colors border border-gray-600">
                             {isWhiteboardActive ? <MonitorOff size={18}/> : <Presentation size={18}/>}
                             {isWhiteboardActive ? "Close Whiteboard" : "Open Whiteboard"}
                         </button>
                     )}
-
                      <div className="flex-1 bg-gray-900 rounded-xl overflow-hidden border border-gray-800 relative shadow-2xl flex items-center justify-center">
                         <div className="w-full h-full" style={{ display: isWhiteboardActive ? 'block' : 'none' }}>
                             <Whiteboard ref={whiteboardRef} />
@@ -218,7 +221,6 @@ const LiveClassLogic = ({ liveLectureId }: { liveLectureId: number }) => {
                 </div>
                 <ClassroomSidebar />
             </div>
-
             <MeetingControls 
                 liveLectureId={liveLectureId} 
                 isWhiteboardActive={isWhiteboardActive}
