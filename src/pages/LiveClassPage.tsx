@@ -8,15 +8,20 @@ import Whiteboard, { type WhiteboardRef } from '../components/Whiteboard';
 import ChatPanel from '../components/ChatPanel';
 import toast from 'react-hot-toast';
 import { Users, Presentation, MonitorOff, MessageSquare } from 'lucide-react';
-import { lmsService } from '../api/lmsService'; 
+
 
 // --- DEBUG COMPONENT ---
 const MeetingStatusListener = () => {
     useMeeting({
-        onMeetingJoined: () => { console.log("✅ SDK Joined"); toast.success("You are Live!"); },
-        onError: (data) => { console.error("❌ SDK ERROR:", data); toast.error(`Connection Failed: ${data.message}`); }
+        onMeetingJoined: async () => {
+            console.log("✅ Joined Meeting");
+        },
+        onError: (data) => {
+            console.error("❌ SDK ERROR:", data);
+            toast.error(`Connection Failed: ${data.message}`);
+        }
     });
-    return null; 
+    return null;
 };
 
 // --- STUDENT LIST ITEM ---
@@ -49,19 +54,17 @@ const ClassroomSidebar = () => {
     return (
         <div className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col">
             <div className="flex border-b border-gray-800">
-                <button 
+                <button
                     onClick={() => setActiveTab('students')}
-                    className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                        activeTab === 'students' ? 'text-white border-b-2 border-blue-500 bg-gray-800/50' : 'text-gray-400 hover:text-white hover:bg-gray-800'
-                    }`}
+                    className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'students' ? 'text-white border-b-2 border-blue-500 bg-gray-800/50' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                        }`}
                 >
                     <Users size={16} /> Students <span className="text-xs bg-gray-700 px-1.5 rounded-full">{studentIds.length}</span>
                 </button>
-                <button 
+                <button
                     onClick={() => setActiveTab('chat')}
-                    className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                        activeTab === 'chat' ? 'text-white border-b-2 border-blue-500 bg-gray-800/50' : 'text-gray-400 hover:text-white hover:bg-gray-800'
-                    }`}
+                    className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${activeTab === 'chat' ? 'text-white border-b-2 border-blue-500 bg-gray-800/50' : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                        }`}
                 >
                     <MessageSquare size={16} /> Chat
                 </button>
@@ -86,14 +89,12 @@ const ClassroomSidebar = () => {
 };
 
 // --- MAIN LOGIC WRAPPER ---
-const LiveClassLogic = ({ liveLectureId }: { liveLectureId: number }) => {
-    const { 
-        enableWebcam, disableWebcam, 
-        unmuteMic, 
-        enableScreenShare, disableScreenShare, 
+const LiveClassLogic = ({ liveLectureId}: { liveLectureId: number }) => {
+    const {
+        enableWebcam, disableWebcam,
+        unmuteMic,
+        enableScreenShare, disableScreenShare,
         presenterId, localParticipant,
-        recordingState, 
-        meetingId       
     } = useMeeting();
 
     const [isWhiteboardActive, setIsWhiteboardActive] = useState(false);
@@ -101,59 +102,28 @@ const LiveClassLogic = ({ liveLectureId }: { liveLectureId: number }) => {
     const [isMediaInitialized, setIsMediaInitialized] = useState(false);
 
     // ============================================================
-    // 1. SAFE MEDIA INITIALIZATION & AUTO-PIN
+    // 1. SAFE MEDIA INITIALIZATION & LOCAL PINNING
     // ============================================================
     useEffect(() => {
         if (localParticipant && !isMediaInitialized) {
-            // Add a small delay to ensure SDK is ready and avoid race conditions
-            const timer = setTimeout(() => {
-                enableWebcam(); // Turn on Camera
-                unmuteMic();    // Turn on Mic
-                
-                // Pin LOCALLY (for the instructor's own view)
+            // Delay ensures the SDK internal state is fully ready
+            const timer = setTimeout(async () => {
+                enableWebcam();
+                unmuteMic();
+
+                // Pin locally so the instructor always sees themselves large
                 localParticipant.pin("CAM");
-                
                 setIsMediaInitialized(true);
-            }, 1000); 
+            }, 1000);
 
             return () => clearTimeout(timer);
         }
     }, [localParticipant, isMediaInitialized, enableWebcam, unmuteMic]);
 
     // ============================================================
-    // 2. AUTO-START RECORDING (BACKEND CALL)
+    // NOTE: Manual recording useEffect removed. 
+    // Recording is now handled by the Backend autoStartConfig.
     // ============================================================
-    useEffect(() => {
-        // Trigger only when:
-        // 1. I am joined (localParticipant.id exists)
-        // 2. Media is ready
-        // 3. Recording is not already running
-        if (localParticipant?.id && isMediaInitialized && recordingState === "STOPPED" && meetingId) {
-            
-            const startSecureRecording = async () => {
-                try {
-                    console.log(`🚀 Requesting Backend to start recording for Instructor: ${localParticipant.id}`);
-                    
-                    // [UPDATED] Pass 'meetingId' AND 'localParticipant.id'
-                    // This allows the Backend to "Pin" this specific participant ID
-                    // ensuring ONLY the instructor is recorded.
-                    await lmsService.startRecording(meetingId, localParticipant.id);
-                    
-                    toast.success("Recording Started (Instructor Pinned)");
-                } catch (error) {
-                    console.error("Failed to start recording:", error);
-                }
-            };
-
-            // Small delay to ensure stream is stable before recording starts
-            const recordTimer = setTimeout(() => {
-                startSecureRecording();
-            }, 2000);
-            
-            return () => clearTimeout(recordTimer);
-        }
-    }, [localParticipant?.id, isMediaInitialized, recordingState, meetingId]);
-
 
     const isScreenShareActive = presenterId === localParticipant?.id;
 
@@ -166,11 +136,11 @@ const LiveClassLogic = ({ liveLectureId }: { liveLectureId: number }) => {
 
         if (isWhiteboardActive) {
             setIsWhiteboardActive(false);
-            disableWebcam(); 
-            setTimeout(() => { 
-                enableWebcam(); 
-                localParticipant?.pin("CAM"); 
-                toast("Switched to Camera"); 
+            disableWebcam();
+            setTimeout(() => {
+                enableWebcam();
+                localParticipant?.pin("CAM");
+                toast("Switched to Camera");
             }, 500);
         } else {
             setIsWhiteboardActive(true);
@@ -201,22 +171,23 @@ const LiveClassLogic = ({ liveLectureId }: { liveLectureId: number }) => {
         if (isScreenShareActive) {
             disableScreenShare();
             setTimeout(() => {
-                enableWebcam(); 
-                localParticipant?.pin("CAM"); 
+                enableWebcam();
+                localParticipant?.pin("CAM");
                 toast("Switched to Camera");
-            }, 1000); 
+            }, 1000);
         } else {
             disableWebcam();
             setTimeout(() => {
                 enableScreenShare();
-                localParticipant?.pin("SHARE"); 
+                // When sharing screen, pin the share track locally
+                localParticipant?.pin("SHARE");
             }, 500);
         }
     };
 
     return (
         <div className="flex flex-col h-screen bg-black">
-            <MeetingStatusListener />
+            <MeetingStatusListener/>
             <div className="flex flex-1 overflow-hidden bg-black">
                 <div className="flex-1 flex flex-col p-4 relative">
                     <div className="absolute top-4 left-4 z-10 bg-red-600 px-3 py-1 rounded text-white text-xs font-bold flex items-center gap-2 shadow-lg">
@@ -225,26 +196,26 @@ const LiveClassLogic = ({ liveLectureId }: { liveLectureId: number }) => {
                     </div>
                     {!isScreenShareActive && (
                         <button onClick={handleWhiteboardToggle} className="absolute top-4 right-4 z-20 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg transition-colors border border-gray-600">
-                            {isWhiteboardActive ? <MonitorOff size={18}/> : <Presentation size={18}/>}
+                            {isWhiteboardActive ? <MonitorOff size={18} /> : <Presentation size={18} />}
                             {isWhiteboardActive ? "Close Whiteboard" : "Open Whiteboard"}
                         </button>
                     )}
-                     <div className="flex-1 bg-gray-900 rounded-xl overflow-hidden border border-gray-800 relative shadow-2xl flex items-center justify-center">
+                    <div className="flex-1 bg-gray-900 rounded-xl overflow-hidden border border-gray-800 relative shadow-2xl flex items-center justify-center">
                         <div className="w-full h-full" style={{ display: isWhiteboardActive ? 'block' : 'none' }}>
                             <Whiteboard ref={whiteboardRef} />
                         </div>
                         <div className="w-full h-full" style={{ display: !isWhiteboardActive ? 'block' : 'none' }}>
-                             <ClassroomCameraView />
+                            <ClassroomCameraView />
                         </div>
-                     </div>
+                    </div>
                 </div>
                 <ClassroomSidebar />
             </div>
-            <MeetingControls 
-                liveLectureId={liveLectureId} 
+            <MeetingControls
+                liveLectureId={liveLectureId}
                 isWhiteboardActive={isWhiteboardActive}
-                onScreenShareClick={handleScreenShareToggle} 
-                isScreenShareActive={isScreenShareActive}   
+                onScreenShareClick={handleScreenShareToggle}
+                isScreenShareActive={isScreenShareActive}
             />
         </div>
     );
@@ -254,7 +225,7 @@ const LiveClassLogic = ({ liveLectureId }: { liveLectureId: number }) => {
 const LiveClassPage = () => {
     const { user } = useAuth();
     const location = useLocation();
-    const [sessionData, setSessionData] = useState<{roomId: string, token: string, liveLectureId: number} | null>(null);
+    const [sessionData, setSessionData] = useState<{ roomId: string, token: string, liveLectureId: number } | null>(null);
 
     useEffect(() => {
         const navState = location.state;
@@ -273,12 +244,12 @@ const LiveClassPage = () => {
         <MeetingProvider
             config={{
                 meetingId: sessionData.roomId,
-                // Disable auto-start to prevent "Timeout" error on mount
-                micEnabled: false, 
-                webcamEnabled: false, 
+                micEnabled: false,
+                webcamEnabled: false,
                 name: user.fullName,
-                mode: "SEND_AND_RECV", // Instructor Mode
-                debugMode: true,
+                participantId: `instructor`,
+                mode: "SEND_AND_RECV",
+                debugMode: false,
             }}
             token={sessionData.token}
             joinWithoutUserInteraction={true}

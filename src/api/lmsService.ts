@@ -16,7 +16,7 @@ export interface ScheduleItem {
 export const lmsService = {
   getSchedule: async () => {
     const response = await axiosClient.get('/lms/instructor/schedule');
-    return response.data.schedule; 
+    return response.data.schedule;
   },
 
   startClass: async (scheduleId: number, topic: string) => {
@@ -33,12 +33,4 @@ export const lmsService = {
     });
     return response.data;
   },
-
- startRecording: async (roomId: string, participantId: string) => {
-    const response = await axiosClient.post('/lms/recording/start', {
-      roomId,
-      participantId // <--- Sending this is crucial for Pinning
-    });
-    return response.data;
-  }
 };
